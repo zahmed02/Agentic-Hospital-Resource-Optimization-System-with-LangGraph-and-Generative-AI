@@ -5,6 +5,7 @@ from app.core.database import get_db, engine
 from app.core.config import settings
 from app.models import database as models
 from app.api.routes import router as agent_router
+from app.api.explain_routes import router as explain_router
 
 # Create tables on startup
 models.Base.metadata.create_all(bind=engine)
@@ -17,6 +18,7 @@ app = FastAPI(
 
 # Include agent routes
 app.include_router(agent_router)
+app.include_router(explain_router)
 
 @app.get("/")
 async def root():
