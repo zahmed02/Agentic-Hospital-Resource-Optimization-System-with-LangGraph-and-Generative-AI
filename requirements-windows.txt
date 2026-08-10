@@ -1,0 +1,49 @@
+﻿# Core API & Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Agentic AI & LangChain Stack
+langchain==0.3.13
+langchain-groq==0.2.1
+langgraph==0.2.56
+langchain-community==0.3.13
+langchain-core==0.3.29
+
+# Vector Database & Embeddings (Windows-friendly versions)
+chromadb==0.5.5
+chroma-hnswlib==0.7.3
+sentence-transformers==3.3.1
+tiktoken==0.8.0
+
+# SQL & ORM
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.1
+
+# Data Processing & ML
+pandas==2.2.3
+numpy==2.2.1
+scikit-learn==1.6.0
+
+# Explainable AI (XAI) - Pure Python version
+shap==0.45.0
+matplotlib==3.10.0
+
+# Configuration & Utilities
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+pyyaml==6.0.2
+
+# HTTP & Async
+httpx==0.28.1
+aiofiles==24.1.0
+
+# Synthetic Data
+faker==33.3.1
+
+# Additional dependencies for chromadb
+numba
+slicer
+onnxruntime

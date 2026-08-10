@@ -1,0 +1,45 @@
+﻿# Core API & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+
+# Agentic AI & LangChain Stack
+langchain>=0.3.0
+langchain-groq>=1.0.0
+langgraph>=1.0.0
+langchain-community>=0.3.0
+langchain-core>=1.0.0
+
+# PostgreSQL & SQL (Neon compatible)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.14.0
+
+# Vector Database
+faiss-cpu>=1.8.0
+sentence-transformers>=3.0.0
+tiktoken>=0.8.0
+
+# Data Processing & ML
+pandas>=2.2.0
+numpy>=2.0.0
+scikit-learn>=1.6.0
+
+# Explainable AI
+lime>=0.2.0.1
+
+# Configuration & Utilities
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+
+# HTTP & Async
+httpx>=0.28.0
+aiofiles>=24.0.0
+
+# Synthetic Data
+faker>=33.0.0
+
+# AWS/Neon SSL Support
+# Already included in psycopg2-binary
