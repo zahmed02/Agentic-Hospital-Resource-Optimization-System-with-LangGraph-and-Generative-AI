@@ -1,1 +1,1 @@
-# Agentic-Hospital-Resource-Optimization-using-LangGraph-Groq-and-FAISS-with-Explainable-AI
+# Agentic-Hospital-Resource-Optimization-System-with-LangGraph-and-Generative-AI
