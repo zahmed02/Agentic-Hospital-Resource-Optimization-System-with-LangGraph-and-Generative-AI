@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.core.database import get_db, engine
@@ -6,6 +7,7 @@ from app.core.config import settings
 from app.models import database as models
 from app.api.routes import router as agent_router
 from app.api.explain_routes import router as explain_router
+from app.api.data_routes import router as data_router
 
 # Create tables on startup
 models.Base.metadata.create_all(bind=engine)
@@ -16,9 +18,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Include agent routes
+# CORS middleware – allow all origins for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
 app.include_router(agent_router)
 app.include_router(explain_router)
+app.include_router(data_router)
 
 @app.get("/")
 async def root():
