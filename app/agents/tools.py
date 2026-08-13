@@ -10,11 +10,10 @@ import re
 import math
 import statistics
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta
 from sqlalchemy import text
 from langchain_core.tools import tool
 from app.core.database import SessionLocal
-from app.models.database import Patient, Admission, Bed, DischargePrediction
+from app.models.database import Patient, Admission, Bed
 
 
 # ========== SQL Query Tool ==========
@@ -66,15 +65,35 @@ def sql_query_tool(query: str) -> str:
 
 # ========== RAG Retrieval Tool ==========
 @tool
-def rag_retrieval_tool(query: str) -> str:
+def rag_retrieval_tool(
+    query: str,
+    condition: Optional[str] = None,
+    min_age: Optional[int] = None,
+    max_age: Optional[int] = None,
+) -> str:
     """
-    Retrieve similar past discharge cases based on a description (e.g., condition, age, symptoms).
-    Uses a ChromaDB vector index built from discharge notes.
+    Retrieve similar past discharge cases. Uses a ChromaDB vector index built
+    from discharge notes, ranked by semantic similarity to `query`.
+
+    IMPORTANT — for accurate results, always pass `condition` and/or
+    min_age/max_age as SEPARATE structured arguments whenever the user's
+    question specifies them, instead of relying on the free-text `query`
+    alone to enforce them:
+      - "COPD patient in their 50s" -> condition="COPD", min_age=50, max_age=59
+      - "elderly cardiac patient" -> condition="Cardiac Arrhythmia" (or similar), min_age=65
+    min_age/max_age are applied as a hard filter (results outside the range
+    are excluded entirely, not just ranked lower). `condition` filters by
+    substring match on the stored diagnosis. Use `query` itself for softer,
+    unstructured criteria (symptoms, notes phrasing) that don't map to a
+    single field.
+
     Returns top 5 similar cases with patient details and truncated notes.
     """
     from app.services.retriever import get_similar_cases
     try:
-        results = get_similar_cases(query, top_k=5)
+        results = get_similar_cases(
+            query, top_k=5, condition=condition, min_age=min_age, max_age=max_age
+        )
         for res in results:
             if "notes" in res and res["notes"] and len(res["notes"]) > 100:
                 res["notes"] = res["notes"][:100] + "..."
@@ -143,21 +162,22 @@ def get_patient_details(patient_id: str) -> str:
 def optimize_bed_allocation(target_free_beds: int = 5) -> str:
     """
     Runs a resource-optimization pass over current bed occupancy to identify
-    which wards will fall short of a target number of free beds, and
+    which wards are below a target safety buffer of free beds, and
     recommends which active patients in that ward to prioritize for discharge
     (soonest expected_discharge_date first).
 
-    Input: target_free_beds - minimum number of free beds desired per ward
-    (default 5).
+    Input: target_free_beds - the desired safety buffer of free beds per
+    ward (default 5). This is a buffer target, NOT "beds until zero" — a
+    ward with `at_risk: true` still has free_beds > 0 in most cases, it just
+    means free_beds is below the requested buffer, so discuss it as "below
+    target buffer" / "at risk", not as "about to run out of beds" unless
+    free_beds is actually 0 or negative-trending.
 
-    Returns JSON: for each ward, total beds, occupied beds, free beds,
-    shortage (0 if none), and a list of recommended discharge-priority
-    patients (patient_id, name, expected_discharge_date) sized to close
-    the shortage.
-
-    This is the agent's optimization/planning tool — use it whenever asked
-    about bed shortages, capacity risk, or "what should we prioritize" style
-    questions, instead of trying to compute this by hand.
+    Returns JSON: for each ward — total_beds, occupied_beds, free_beds,
+    target_free_beds, buffer_shortfall (how many additional discharges
+    would close the gap to the target buffer; 0 if already at/above it),
+    at_risk (bool, true if buffer_shortfall > 0), and a list of recommended
+    discharge-priority patients sized to close the shortfall.
     """
     try:
         with SessionLocal() as db:
@@ -170,14 +190,15 @@ def optimize_bed_allocation(target_free_beds: int = 5) -> str:
                 ORDER BY ward
             """)).fetchall()
 
-            recommendations = []
+            results = []
             for ward, total, occupied in ward_rows:
                 occupied = occupied or 0
                 free = total - occupied
-                shortage = max(0, target_free_beds - free)
+                buffer_shortfall = max(0, target_free_beds - free)
+                at_risk = buffer_shortfall > 0
 
                 candidates = []
-                if shortage > 0:
+                if at_risk:
                     cand_rows = db.execute(text("""
                         SELECT p.patient_id, p.name, p.expected_discharge_date
                         FROM patients p
@@ -185,7 +206,7 @@ def optimize_bed_allocation(target_free_beds: int = 5) -> str:
                         WHERE p.is_active = true AND a.department = :ward
                         ORDER BY p.expected_discharge_date ASC NULLS LAST
                         LIMIT :n
-                    """), {"ward": ward, "n": shortage}).fetchall()
+                    """), {"ward": ward, "n": buffer_shortfall}).fetchall()
                     candidates = [
                         {
                             "patient_id": r.patient_id,
@@ -195,19 +216,22 @@ def optimize_bed_allocation(target_free_beds: int = 5) -> str:
                         for r in cand_rows
                     ]
 
-                recommendations.append({
+                results.append({
                     "ward": ward,
                     "total_beds": total,
                     "occupied_beds": occupied,
                     "free_beds": free,
-                    "shortage": shortage,
+                    "target_free_beds": target_free_beds,
+                    "buffer_shortfall": buffer_shortfall,
+                    "at_risk": at_risk,
                     "discharge_priority_candidates": candidates,
                 })
 
             summary = {
                 "target_free_beds_per_ward": target_free_beds,
-                "wards_at_risk": len([r for r in recommendations if r["shortage"] > 0]),
-                "results": recommendations,
+                "note": "at_risk means free_beds is below the target buffer, not that the ward has 0 free beds. Check free_beds directly to see actual availability.",
+                "wards_at_risk": len([r for r in results if r["at_risk"]]),
+                "results": results,
             }
             return json.dumps(summary, default=str, indent=2)
     except Exception as e:

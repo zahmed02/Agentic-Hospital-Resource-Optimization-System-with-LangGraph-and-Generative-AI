@@ -1,14 +1,16 @@
 """
 ChromaDB-based RAG retriever for similar discharge cases.
 
-CHANGE: this previously hand-rolled a `faiss.IndexFlatL2` and persisted it
-via pickle. It now uses a proper vector database (ChromaDB, persistent
-client) as the spec called for. Embeddings come from the shared client in
-app.core.embeddings so we don't load a second SentenceTransformer instance.
+CHANGE: get_similar_cases() now accepts optional condition / min_age / max_age
+filters. Age range is applied as a hard Chroma metadata filter (not left to
+embedding similarity, which was letting a 34-year-old rank near a "50s"
+query just because the surrounding text was phrased similarly). Condition is
+applied as a case-insensitive substring filter on the pre-ranked candidate
+set, since Chroma's `where` doesn't support partial string matches.
 """
 
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import chromadb
 from app.core.database import SessionLocal
 from app.models.database import Admission, Patient
@@ -91,20 +93,61 @@ def build_index(force_rebuild: bool = False) -> None:
         print(f"Chroma index built with {len(texts)} cases.")
 
 
-def get_similar_cases(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Retrieve top-k similar discharge cases based on a query string."""
+def get_similar_cases(
+    query: str,
+    top_k: int = 5,
+    condition: Optional[str] = None,
+    min_age: Optional[int] = None,
+    max_age: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve top-k similar discharge cases.
+
+    - min_age/max_age are applied as a HARD metadata filter in Chroma before
+      ranking — a query like "in their 50s" with min_age=50, max_age=59 will
+      never return a 34-year-old, unlike relying on embedding similarity alone.
+    - condition is applied as a case-insensitive substring filter on the
+      similarity-ranked candidates (over-fetched, then filtered), since
+      Chroma's `where` only supports exact/range matches, not partial text.
+      If no candidate matches the condition, falls back to the unfiltered
+      ranked results rather than returning nothing.
+    """
     collection = get_collection()
     if collection.count() == 0:
         return [{"error": "No cases available."}]
 
+    where = None
+    if min_age is not None or max_age is not None:
+        age_filter: Dict[str, int] = {}
+        if min_age is not None:
+            age_filter["$gte"] = min_age
+        if max_age is not None:
+            age_filter["$lte"] = max_age
+        where = {"age": age_filter}
+
     query_emb = embed_query(query)
+
+    # Over-fetch when we still need to post-filter by condition substring,
+    # so filtering doesn't leave us with fewer than top_k results.
+    fetch_n = min(top_k * 4 if condition else top_k, collection.count())
+
     results = collection.query(
         query_embeddings=[query_emb.tolist()],
-        n_results=min(top_k, collection.count()),
+        n_results=fetch_n,
+        where=where,
     )
 
-    metadatas = results.get("metadatas", [[]])[0]
-    return list(metadatas)
+    metadatas = list(results.get("metadatas", [[]])[0])
+
+    if condition:
+        cond_lower = condition.lower()
+        matched = [m for m in metadatas if cond_lower in (m.get("condition") or "").lower()]
+        if matched:
+            metadatas = matched
+        # else: no exact condition match among candidates — keep the
+        # similarity-ranked results rather than returning an empty list.
+
+    return metadatas[:top_k]
 
 
 # Build index on module load (no-op if already populated)
