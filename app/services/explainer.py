@@ -1,12 +1,15 @@
 """
 LIME explainer for Length of Stay predictions.
+
+CHANGE: explain_prediction() now also returns admission_date,
+predicted_discharge_datetime, and baseline_discharge_datetime
+(admission_date + LIME intercept days) — real calendar dates/times
+instead of raw day-counts.
 """
 
-import os
-import joblib
 import numpy as np
-import pandas as pd
-from typing import Dict, Any, List
+from typing import Dict, Any
+from datetime import timedelta
 import lime
 import lime.lime_tabular
 from app.services.predictor import load_model
@@ -15,27 +18,23 @@ from app.models.database import Patient, Admission
 
 _explainer = None
 
+
 def get_explainer():
     """Lazy load the LIME explainer."""
     global _explainer
     if _explainer is None:
         model_data = load_model()
-        model = model_data["model"]
-        encoders = model_data["encoders"]
         feature_names = model_data["feature_names"]
-        
-        # We need training data to build the explainer.
-        # Load a sample from DB to define feature ranges.
+        encoders = model_data["encoders"]
+
         with SessionLocal() as db:
-            # Get some discharged patients with admissions for background
             patients = db.query(Patient).filter(
                 Patient.actual_discharge_date.isnot(None)
             ).limit(100).all()
-            
+
             if not patients:
                 raise ValueError("No discharged patients found for LIME background.")
-            
-            # Build background dataset
+
             background = []
             for p in patients:
                 adm = db.query(Admission).filter(Admission.patient_id == p.id).first()
@@ -58,19 +57,14 @@ def get_explainer():
                         row.append(0)
                 if len(row) == len(feature_names):
                     background.append(row)
-            
+
             if not background:
                 raise ValueError("Could not build background dataset for LIME.")
-            
+
             background = np.array(background)
-        
-        # Determine categorical features
-        categorical_features = []
-        for i, col in enumerate(feature_names):
-            if col in encoders:
-                categorical_features.append(i)
-        
-        # Build explainer
+
+        categorical_features = [i for i, col in enumerate(feature_names) if col in encoders]
+
         _explainer = lime.lime_tabular.LimeTabularExplainer(
             training_data=background,
             feature_names=feature_names,
@@ -79,21 +73,21 @@ def get_explainer():
         )
     return _explainer
 
+
 def explain_prediction(patient_id: int) -> Dict[str, Any]:
     """
     Generate LIME explanation for a patient's predicted LOS.
-    Returns feature contributions and prediction.
+    Returns feature contributions, prediction, and real calendar
+    date/times for both the baseline and AI-adjusted discharge estimate.
     """
     from app.services.predictor import predict_los
-    
-    # Get prediction and features
+
     pred_info = predict_los(patient_id)
     model_data = load_model()
     model = model_data["model"]
     feature_names = model_data["feature_names"]
     encoders = model_data["encoders"]
-    
-    # Build the feature vector for this patient
+
     X = []
     for col in feature_names:
         val = pred_info["feature_values"].get(col, 0)
@@ -104,34 +98,34 @@ def explain_prediction(patient_id: int) -> Dict[str, Any]:
                 X.append(0)
         else:
             X.append(val)
-    
+
     X_arr = np.array([X])
-    
-    # Get explainer
+
     explainer = get_explainer()
-    
-    # Get explanation
     exp = explainer.explain_instance(
         data_row=X_arr[0],
         predict_fn=model.predict,
         num_features=len(feature_names)
     )
-    
-    # Extract contributions
+
     contributions = []
     for feature, weight in exp.local_exp[0]:
         contributions.append({
             "feature": feature_names[feature],
             "contribution": round(weight, 2)
         })
-    
-    # Sort by absolute contribution
     contributions.sort(key=lambda x: abs(x["contribution"]), reverse=True)
-    
+
+    intercept_days = round(exp.intercept[0], 2)
+    baseline_discharge_datetime = pred_info["admission_date"] + timedelta(days=intercept_days)
+
     return {
         "patient_id": pred_info["patient_id"],
+        "admission_date": pred_info["admission_date"],
         "predicted_los_days": pred_info["predicted_los_days"],
+        "predicted_discharge_datetime": pred_info["predicted_discharge_datetime"],
+        "baseline_discharge_datetime": baseline_discharge_datetime,
         "feature_values": pred_info["feature_values"],
         "feature_contributions": contributions,
-        "intercept": round(exp.intercept[0], 2)
+        "intercept": intercept_days
     }

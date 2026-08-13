@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { FaArrowLeft, FaSync, FaBrain } from 'react-icons/fa'
+import { FaArrowLeft, FaSync, FaBrain, FaCalendarCheck } from 'react-icons/fa'
 import { getExplanation } from '@/lib/api'
+import { formatDateTime } from '@/lib/format'
 
 export default function ExplainabilityPage() {
   const params = useParams()
@@ -45,7 +46,17 @@ export default function ExplainabilityPage() {
   if (error) return <div className="text-center py-10 text-error">Error: {error}</div>
   if (!explanation) return null
 
-  const { patient_id, predicted_los_days, feature_values, feature_contributions, intercept } = explanation
+  const {
+    patient_id,
+    admission_date,
+    predicted_los_days,
+    predicted_discharge_datetime,
+    baseline_discharge_datetime,
+    feature_contributions,
+    intercept,
+  } = explanation
+
+  const deviationDays = (predicted_los_days - intercept).toFixed(1)
 
   return (
     <div>
@@ -54,7 +65,12 @@ export default function ExplainabilityPage() {
           <Link href="/explorer" className="flex items-center gap-1 text-secondary hover:text-primary text-sm">
             <FaArrowLeft /> Back to Explorer
           </Link>
-          <h1 className="text-2xl font-bold text-on-surface mt-1">{patient_id} <span className="text-xs bg-surface-variant px-2 py-0.5 rounded text-outline">PREDICTION ANALYSIS</span></h1>
+          <h1 className="text-2xl font-bold text-on-surface mt-1">
+            {patient_id} <span className="text-xs bg-surface-variant px-2 py-0.5 rounded text-outline">PREDICTION ANALYSIS</span>
+          </h1>
+          <p className="text-xs text-outline mt-1 flex items-center gap-1">
+            <FaCalendarCheck className="text-outline-variant" /> Admitted {formatDateTime(admission_date)}
+          </p>
         </div>
         <button onClick={() => loadExplanation(Number(id))} className="bg-surface-variant hover:bg-surface-bright text-on-surface border border-outline-variant px-4 py-2 rounded text-xs flex items-center gap-2">
           <FaSync /> RE-RUN EXPLANATION
@@ -64,15 +80,19 @@ export default function ExplainabilityPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="glass-card p-5 rounded-lg flex flex-col justify-between">
           <div>
-            <h2 className="text-xs uppercase tracking-wider text-outline">LOS Forecast</h2>
+            <h2 className="text-xs uppercase tracking-wider text-outline">Discharge Forecast</h2>
             <div className="border-b border-white/5 py-3">
-              <p className="text-sm text-on-surface-variant">Intercept (Baseline)</p>
-              <p className="text-2xl font-bold text-on-surface">{intercept} <span className="text-sm text-outline">days</span></p>
+              <p className="text-sm text-on-surface-variant">Baseline Estimate</p>
+              <p className="text-lg font-bold text-on-surface leading-tight">{formatDateTime(baseline_discharge_datetime)}</p>
+              <p className="text-xs text-outline mt-1">{intercept} day{intercept === 1 ? '' : 's'} from admission</p>
             </div>
             <div className="py-3">
               <p className="text-sm text-secondary flex items-center gap-1"><FaBrain /> AI Adjusted</p>
-              <p className="text-2xl font-bold text-error">{predicted_los_days} <span className="text-sm text-outline">days</span></p>
-              <div className="mt-1 text-xs bg-error/10 text-error px-2 py-1 rounded inline-block">+{(predicted_los_days - intercept).toFixed(1)} days deviation</div>
+              <p className="text-lg font-bold text-error leading-tight">{formatDateTime(predicted_discharge_datetime)}</p>
+              <p className="text-xs text-outline mt-1">{predicted_los_days} day{predicted_los_days === 1 ? '' : 's'} from admission</p>
+              <div className="mt-2 text-xs bg-error/10 text-error px-2 py-1 rounded inline-block">
+                {Number(deviationDays) >= 0 ? '+' : ''}{deviationDays} days vs baseline
+              </div>
             </div>
           </div>
         </div>
@@ -107,7 +127,7 @@ export default function ExplainabilityPage() {
 
       <div className="glass-card p-4 rounded-lg mt-6 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-3">
-          <span className="text-2xl text-secondary"></span>
+          <span className="text-2xl text-secondary">📊</span>
           <div>
             <p className="text-xs text-outline">MODEL CONTEXT</p>
             <p className="text-sm text-on-surface">Random Forest ensemble (v2.4). Local surrogate model applied.</p>

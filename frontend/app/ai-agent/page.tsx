@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { FaRobot, FaMicrophone, FaPaperPlane, FaBrain } from 'react-icons/fa'
+import { useState, useEffect } from 'react'
+import { FaRobot, FaPaperPlane, FaSync } from 'react-icons/fa'
 import { queryAgent } from '@/lib/api'
+import { getOrCreateSessionId, resetSessionId } from '@/lib/session'
 
 const quickActions = ['Show ICU occupancy', 'Summarize shift notes', 'Flag abnormal vitals']
 
@@ -12,15 +13,23 @@ export default function AIAgentPage() {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  // CHANGE: stable per-tab session id, sent with every query so the
+  // backend's LangGraph checkpointer can thread conversation memory
+  // (e.g. "what ward is she in?" resolving to the last patient discussed).
+  const [sessionId, setSessionId] = useState<string>('')
+
+  useEffect(() => {
+    setSessionId(getOrCreateSessionId())
+  }, [])
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return
+    if (!input.trim() || loading || !sessionId) return
     const userMsg = input
     setMessages(prev => [...prev, { role: 'user', content: userMsg, time: new Date().toLocaleTimeString() }])
     setInput('')
     setLoading(true)
     try {
-      const response = await queryAgent(userMsg)
+      const response = await queryAgent(userMsg, sessionId)
       setMessages(prev => [...prev, { role: 'agent', content: response.response || 'No response', time: new Date().toLocaleTimeString() }])
     } catch (error: any) {
       setMessages(prev => [...prev, { role: 'agent', content: `Error: ${error.message}`, time: new Date().toLocaleTimeString() }])
@@ -29,8 +38,29 @@ export default function AIAgentPage() {
     }
   }
 
+  const startNewSession = () => {
+    const id = resetSessionId()
+    setSessionId(id)
+    setMessages([
+      { role: 'agent', content: 'New session started — I won\'t remember earlier patients from before this point.', time: new Date().toLocaleTimeString() },
+    ])
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[500px]">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-[10px] font-mono text-outline">
+          SESSION: {sessionId ? sessionId.slice(0, 8) : '…'}
+        </span>
+        <button
+          onClick={startNewSession}
+          className="text-[10px] flex items-center gap-1 text-secondary hover:text-primary transition"
+          title="Start a fresh conversation with no memory of earlier patients"
+        >
+          <FaSync size={10} /> NEW SESSION
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-surface-container-low/50 rounded-xl border border-white/5">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>

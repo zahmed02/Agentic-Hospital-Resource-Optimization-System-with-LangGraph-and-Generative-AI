@@ -1,13 +1,34 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 // ---------- Agent ----------
-export async function queryAgent(query: string) {
+// CHANGE: queryAgent now takes and sends a sessionId, so the backend's
+// LangGraph checkpointer can thread conversation memory across turns
+// (e.g. "what ward is she in?" resolving to the last patient discussed).
+export async function queryAgent(query: string, sessionId: string) {
   const res = await fetch(`${BASE_URL}/agent/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, session_id: sessionId }),
   })
   if (!res.ok) throw new Error('Agent query failed')
+  return res.json()
+}
+
+// ---------- Executive summary report ----------
+export async function getAgentReport(focus?: string) {
+  const res = await fetch(`${BASE_URL}/agent/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ focus: focus ?? null }),
+  })
+  if (!res.ok) throw new Error('Report generation failed')
+  return res.json()
+}
+
+// ---------- Clinician vs Admin debate ----------
+export async function getAgentDebate(patientId: string) {
+  const res = await fetch(`${BASE_URL}/agent/debate/${patientId}`)
+  if (!res.ok) throw new Error('Debate fetch failed')
   return res.json()
 }
 
