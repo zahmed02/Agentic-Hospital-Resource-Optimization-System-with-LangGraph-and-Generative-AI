@@ -1,117 +1,111 @@
 """
-FAISS-based RAG retriever for similar discharge cases.
-Builds index from admission notes and discharge data at startup.
+ChromaDB-based RAG retriever for similar discharge cases.
+
+CHANGE: this previously hand-rolled a `faiss.IndexFlatL2` and persisted it
+via pickle. It now uses a proper vector database (ChromaDB, persistent
+client) as the spec called for. Embeddings come from the shared client in
+app.core.embeddings so we don't load a second SentenceTransformer instance.
 """
 
 import os
-import pickle
-import numpy as np
 from typing import List, Dict, Any
-from sentence_transformers import SentenceTransformer
-import faiss
+import chromadb
 from app.core.database import SessionLocal
-from app.models.database import Admission, Patient, DischargePrediction
+from app.models.database import Admission, Patient
+from app.core.embeddings import embed_texts, embed_query
 
-# Global variables
-_index = None
-_metadata = None
-_embedder = None
+_client = None
+_collection = None
+COLLECTION_NAME = "discharge_cases"
+PERSIST_DIR = "./data/processed/chroma_db"
 
-def get_embedder():
-    """Lazy load sentence transformer model."""
-    global _embedder
-    if _embedder is None:
-        _embedder = SentenceTransformer('all-MiniLM-L6-v2')
-    return _embedder
 
-def build_faiss_index(force_rebuild=False):
+def get_client():
+    global _client
+    if _client is None:
+        os.makedirs(PERSIST_DIR, exist_ok=True)
+        _client = chromadb.PersistentClient(path=PERSIST_DIR)
+    return _client
+
+
+def get_collection():
+    global _collection
+    if _collection is None:
+        _collection = get_client().get_or_create_collection(COLLECTION_NAME)
+    return _collection
+
+
+def build_index(force_rebuild: bool = False) -> None:
     """
-    Build FAISS index from discharge notes and predictions.
-    Stores in a pickle file for persistence.
+    Build (or rebuild) the Chroma collection from discharged admissions
+    that have notes. Safe to call repeatedly — if the collection already
+    has data and force_rebuild is False, this is a no-op.
     """
-    global _index, _metadata
-    
-    index_path = "./data/processed/faiss_index.pkl"
-    
-    if not force_rebuild and os.path.exists(index_path):
-        with open(index_path, 'rb') as f:
-            _index, _metadata = pickle.load(f)
+    global _collection
+    collection = get_collection()
+
+    if force_rebuild:
+        get_client().delete_collection(COLLECTION_NAME)
+        _collection = get_client().get_or_create_collection(COLLECTION_NAME)
+        collection = _collection
+    elif collection.count() > 0:
         return
-    
-    # Query database for discharged patients with notes
+
     with SessionLocal() as db:
-        # Get admissions that have discharge notes and are discharged
         admissions = db.query(Admission).filter(
             Admission.is_discharged == True,
             Admission.notes.isnot(None)
         ).all()
-        
+
         if not admissions:
             print("No discharged admissions with notes found. Index empty.")
-            _index = None
-            _metadata = []
             return
-        
-        # Prepare texts and metadata
-        texts = []
-        metadata_list = []
+
+        ids, texts, metadatas = [], [], []
         for adm in admissions:
             patient = db.query(Patient).filter(Patient.id == adm.patient_id).first()
             if not patient:
                 continue
-            # Combine condition, age, notes
             text = f"Condition: {patient.condition}\nAge: {patient.age}\nNotes: {adm.notes or ''}"
+            ids.append(str(adm.id))
             texts.append(text)
-            metadata_list.append({
+            metadatas.append({
                 "patient_id": patient.patient_id,
-                "condition": patient.condition,
-                "age": patient.age,
+                "condition": patient.condition or "",
+                "age": patient.age or 0,
                 "admission_id": adm.id,
-                "discharge_date": adm.discharge_date.strftime("%Y-%m-%d") if adm.discharge_date else None,
-                "notes": adm.notes
+                "discharge_date": adm.discharge_date.strftime("%Y-%m-%d") if adm.discharge_date else "",
+                "notes": (adm.notes or "")[:500],
             })
-        
+
         if not texts:
-            _index = None
-            _metadata = []
             return
-        
-        # Embed texts
-        embedder = get_embedder()
-        embeddings = embedder.encode(texts, convert_to_numpy=True)
-        
-        # Build FAISS index
-        dim = embeddings.shape[1]
-        index = faiss.IndexFlatL2(dim)
-        index.add(embeddings)
-        
-        _index = index
-        _metadata = metadata_list
-        
-        # Save to disk
-        os.makedirs("./data/processed", exist_ok=True)
-        with open(index_path, 'wb') as f:
-            pickle.dump((_index, _metadata), f)
-        
-        print(f"FAISS index built with {len(metadata_list)} cases.")
+
+        embeddings = embed_texts(texts)
+        collection.add(
+            ids=ids,
+            embeddings=embeddings.tolist(),
+            documents=texts,
+            metadatas=metadatas,
+        )
+        print(f"Chroma index built with {len(texts)} cases.")
+
 
 def get_similar_cases(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Retrieve top-k similar cases based on query string."""
-    global _index, _metadata
-    
-    if _index is None or _metadata is None or len(_metadata) == 0:
+    """Retrieve top-k similar discharge cases based on a query string."""
+    collection = get_collection()
+    if collection.count() == 0:
         return [{"error": "No cases available."}]
-    
-    embedder = get_embedder()
-    query_emb = embedder.encode([query], convert_to_numpy=True)
-    
-    distances, indices = _index.search(query_emb, min(top_k, len(_metadata)))
-    
-    results = []
-    for idx in indices[0]:
-        if idx < len(_metadata):
-            results.append(_metadata[idx])
-    return results
 
-# Build index on module load
-build_faiss_index()
+    query_emb = embed_query(query)
+    results = collection.query(
+        query_embeddings=[query_emb.tolist()],
+        n_results=min(top_k, collection.count()),
+    )
+
+    metadatas = results.get("metadatas", [[]])[0]
+    return list(metadatas)
+
+
+# Build index on module load (no-op if already populated)
+build_index()

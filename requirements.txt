@@ -43,3 +43,4 @@ faker>=33.0.0
 
 # AWS/Neon SSL Support
 # Already included in psycopg2-binary
+chromadb>=0.5

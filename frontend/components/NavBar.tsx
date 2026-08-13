@@ -9,6 +9,7 @@ const navLinks = [
   { name: 'AI Agent', href: '/ai-agent' },
   { name: 'Explorer', href: '/explorer' },
   { name: 'Explainability', href: '/explainability' },
+  { name: 'Hospital Map', href: '/hospital-map' },
   { name: 'Settings', href: '/settings' },
 ]
 

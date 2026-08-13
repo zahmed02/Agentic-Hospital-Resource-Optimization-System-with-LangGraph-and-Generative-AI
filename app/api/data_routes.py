@@ -1,6 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 from typing import Optional
 from datetime import date
 from app.core.database import get_db
@@ -20,9 +20,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     occupied_beds = db.query(Bed).filter(Bed.is_occupied == True).count()
     occupancy_pct = round((occupied_beds / total_beds * 100) if total_beds else 0, 1)
     
-    avg_los = db.query(func.avg(
-        func.julianday(Patient.actual_discharge_date) - func.julianday(Patient.admission_date)
-    )).filter(Patient.actual_discharge_date.isnot(None)).scalar() or 0
+    # PostgreSQL-compatible average length of stay (in days)
+    avg_los = db.query(
+        func.avg(
+            func.extract('day', Patient.actual_discharge_date - Patient.admission_date)
+        )
+    ).filter(Patient.actual_discharge_date.isnot(None)).scalar() or 0
     avg_los = round(avg_los, 1)
     
     pending_discharges = db.query(Patient).filter(
@@ -111,10 +114,11 @@ def get_patient(patient_id: int, db: Session = Depends(get_db)):
 
 @router.get("/beds/occupancy")
 def get_bed_occupancy(db: Session = Depends(get_db)):
+    # Group by ward and count total and occupied beds
     results = db.query(
         Bed.ward,
         func.count(Bed.id).label("total"),
-        func.sum(Bed.is_occupied.cast(int)).label("occupied")
+        func.count().filter(Bed.is_occupied == True).label("occupied")
     ).group_by(Bed.ward).all()
     return [{"ward": r.ward, "total": r.total, "occupied": r.occupied} for r in results]
 

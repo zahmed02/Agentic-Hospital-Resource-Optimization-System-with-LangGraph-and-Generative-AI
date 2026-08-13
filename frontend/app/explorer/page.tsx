@@ -117,9 +117,9 @@ export default function ExplorerPage() {
                         <button onClick={() => handleSelectPatient(p.id)} className="text-primary hover:bg-primary/10 p-1 rounded">
                           <FaEye />
                         </button>
-                        <Link href={`/explainability/${p.id}`} className="text-secondary hover:bg-secondary/10 p-1 rounded">
-                          <FaBrain />
-                        </Link>
+<Link href={`/explainability/${p.id}`} className="text-secondary hover:bg-secondary/10 p-1 rounded">
+  <FaBrain />
+</Link>
                       </td>
                     </tr>
                   ))}
