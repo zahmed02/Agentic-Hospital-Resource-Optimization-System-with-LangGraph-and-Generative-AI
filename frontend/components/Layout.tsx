@@ -1,137 +1,89 @@
 'use client'
 
-import { ReactNode, useState } from 'react'
+import { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { 
-  FaDatabase, FaMicrochip, FaBrain, 
-  FaNotesMedical, FaChartLine, FaUsers, 
-  FaSignOutAlt, FaHeartbeat, FaBed, FaClock 
-} from 'react-icons/fa'
-import { MdWarning } from 'react-icons/md'
+import {
+  Activity,
+  Bot,
+  ChevronRight,
+  CircleHelp,
+  LayoutDashboard,
+  Menu,
+  Settings,
+  ShieldCheck,
+  Stethoscope,
+  Users,
+  X,
+} from 'lucide-react'
+import { useState } from 'react'
 
-interface LayoutProps {
-  children: ReactNode
-}
+interface LayoutProps { children: ReactNode }
 
-const navLinks = [
-  { name: 'Dashboard', href: '/', icon: 'FaHeartbeat' },
-  { name: 'AI Agent', href: '/ai-agent', icon: 'FaBrain' },
-  { name: 'Explorer', href: '/explorer', icon: 'FaUsers' },
-  { name: 'Explainability', href: '/explainability', icon: 'FaChartLine' },
-  { name: 'Settings', href: '/settings', icon: 'FaDatabase' },
+const navGroups = [
+  {
+    label: 'Clinical workspace',
+    items: [
+      { name: 'Overview', href: '/', icon: LayoutDashboard },
+      { name: 'Patient registry', href: '/explorer', icon: Users },
+      { name: 'AI clinical assistant', href: '/ai-agent', icon: Bot },
+    ],
+  },
+  {
+    label: 'Decision support',
+    items: [
+      { name: 'Model insights', href: '/explainability', icon: Activity },
+      { name: 'System settings', href: '/settings', icon: Settings },
+    ],
+  },
 ]
 
 export default function Layout({ children }: LayoutProps) {
   const pathname = usePathname()
-
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Fixed Header */}
-      <motion.header
-        className="fixed top-0 left-0 right-0 z-50 h-16 flex items-center justify-between px-6 bg-surface-container/80 backdrop-blur-md border-b border-white/10 shadow-sm"
-        initial={{ y: -60, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 120, damping: 15, delay: 0.1 }}
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-xl font-bold text-primary tracking-tight">VITAL_OS</span>
-          <span className="text-xs text-on-surface-variant hidden sm:inline">v4.2.0</span>
-        </div>
-        <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`text-sm font-medium transition-all duration-200 ${
-                pathname === link.href
-                  ? 'text-primary border-b-2 border-primary pb-1'
-                  : 'text-on-surface-variant hover:text-primary hover:scale-105'
-              }`}
-            >
-              {link.name}
-            </Link>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3">
-          <button className="p-2 hover:bg-surface-variant rounded-full transition-colors">
-            <FaDatabase className="text-on-surface-variant" />
-          </button>
-          <button className="p-2 hover:bg-surface-variant rounded-full transition-colors">
-            <FaMicrochip className="text-on-surface-variant" />
-          </button>
-          <button className="p-2 hover:bg-surface-variant rounded-full transition-colors">
-            <FaBrain className="text-on-surface-variant" />
-          </button>
-          <div className="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center text-on-surface-variant text-sm border border-outline-variant">
-            JD
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const current = navGroups.flatMap((group) => group.items).find((item) => item.href === pathname)
+  const SidebarContent = () => (
+    <>
+      <div className="flex items-center justify-between px-3 pb-8">
+        <Link href="/" onClick={() => setMobileOpen(false)} className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-teal-600 text-white shadow-lg shadow-teal-900/20"><Stethoscope aria-hidden="true" /></span>
+          <span><span className="block text-base font-semibold tracking-tight text-slate-100">VitalOS</span><span className="block text-[11px] text-slate-400">Hospital operations</span></span>
+        </Link>
+        <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X /></button>
+      </div>
+      <nav className="flex flex-col gap-7" aria-label="Primary navigation">
+        {navGroups.map((group) => <div key={group.label}>
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{group.label}</p>
+          <div className="flex flex-col gap-1">
+            {group.items.map((item) => {
+              const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+              const Icon = item.icon
+              return <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${active ? 'bg-teal-500/15 text-teal-300 ring-1 ring-inset ring-teal-500/20' : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-100'}`}>
+                <Icon aria-hidden="true" className={active ? 'text-teal-300' : 'text-slate-500'} />
+                <span className="flex-1">{item.name}</span>{active && <ChevronRight aria-hidden="true" className="text-teal-400" />}
+              </Link>
+            })}
           </div>
+        </div>)}
+      </nav>
+      <div className="mt-auto pt-8">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-200"><ShieldCheck aria-hidden="true" className="text-emerald-400" /> Clinical workspace secure</div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">Connected to live hospital data services.</p>
         </div>
-      </motion.header>
-
-      {/* Fixed Sidebar */}
-      <motion.aside
-        className="fixed left-0 top-16 bottom-0 z-40 w-64 bg-surface-container-low/80 backdrop-blur-sm border-r border-white/10 p-4 space-y-2 overflow-y-auto hidden lg:block"
-        initial={{ x: -80, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 100, damping: 15, delay: 0.15 }}
-      >
-        <div className="mb-6 px-2">
-          <p className="text-lg font-bold text-primary">VITAL_OS</p>
-          <p className="text-xs text-on-surface-variant">Command Center</p>
-        </div>
-        <nav className="space-y-1">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${
-                pathname === link.href
-                  ? 'bg-primary-container text-on-primary-container font-bold shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container-high hover:scale-105'
-              }`}
-            >
-              <span className="material-symbols-outlined">{link.icon}</span>
-              <span>{link.name}</span>
-            </Link>
-          ))}
-        </nav>
-        <div className="mt-auto pt-4 border-t border-white/10 space-y-1">
-          <button className="w-full bg-error/20 text-error py-2 rounded-lg font-bold hover:bg-error/30 transition-colors">
-            EMERGENCY
-          </button>
-        </div>
-      </motion.aside>
-
-      {/* Main Content */}
-      <motion.main
-        className="lg:ml-64 pt-20 px-4 md:px-8 pb-8 flex-1"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-      >
-        <div className="max-w-7xl mx-auto bg-surface-container-low/50 backdrop-blur-sm rounded-xl p-4 md:p-6 border border-white/5">
-          {children}
-        </div>
-      </motion.main>
-
-      {/* Footer */}
-      <motion.footer
-        className="lg:ml-64 border-t border-white/10 bg-surface-container-highest/50 backdrop-blur-sm py-4 px-6"
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-      >
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2 text-xs text-on-surface-variant">
-          <span>© 2026 VITAL_OS – Secure Node Cluster 09</span>
-          <div className="flex gap-4">
-            <a href="#" className="hover:underline">System Logs</a>
-            <a href="#" className="hover:underline">Privacy</a>
-            <a href="#" className="hover:underline">Support</a>
-          </div>
-        </div>
-      </motion.footer>
-    </div>
+      </div>
+    </>
   )
+
+  return <div className="min-h-screen bg-slate-950 text-slate-100">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800/80 bg-slate-950 px-5 py-6 lg:flex"><SidebarContent /></aside>
+    {mobileOpen && <div className="fixed inset-0 z-50 bg-slate-950 lg:hidden"><aside className="flex h-full w-full max-w-sm flex-col border-r border-slate-800 bg-slate-950 px-5 py-6"><SidebarContent /></aside></div>}
+    <div className="lg:pl-72">
+      <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-5 backdrop-blur-xl sm:px-8">
+        <div className="flex items-center gap-3"><button className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu /></button><div><p className="text-sm font-medium text-slate-100">{current?.name ?? 'Clinical workspace'}</p><p className="text-xs text-slate-500">Tuesday, October 2, 2026 <span className="mx-1 text-slate-700">·</span> Day shift</p></div></div>
+        <div className="flex items-center gap-3"><button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-800 sm:block" aria-label="Help"><CircleHelp /></button><div className="hidden h-8 w-px bg-slate-800 sm:block" /><div className="flex items-center gap-2"><div className="flex size-9 items-center justify-center rounded-full bg-slate-800 text-xs font-semibold text-teal-300">JD</div><div className="hidden sm:block"><p className="text-xs font-medium text-slate-200">Jordan Davis</p><p className="text-[11px] text-slate-500">Operations lead</p></div></div></div>
+      </header>
+      <main className="mx-auto max-w-[1500px] px-5 py-7 sm:px-8 lg:px-10">{children}</main>
+    </div>
+  </div>
 }

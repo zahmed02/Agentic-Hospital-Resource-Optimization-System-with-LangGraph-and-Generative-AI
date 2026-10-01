@@ -7,8 +7,8 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
 
 export const metadata: Metadata = {
-  title: 'VITAL_OS – Medical Command Center',
-  description: 'Agentic Hospital Resource Optimization System',
+  title: 'VitalOS | Hospital Operations',
+  description: 'Clinical operations intelligence for patient flow, capacity, and discharge planning.',
 }
 
 export default function RootLayout({
