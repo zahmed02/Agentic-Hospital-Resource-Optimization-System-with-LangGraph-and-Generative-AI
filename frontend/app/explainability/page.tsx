@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { FaArrowLeft, FaSync, FaBrain } from 'react-icons/fa'
 import { getExplanation } from '@/lib/api'
 
-export default function ExplainabilityPage() {
+function ExplainabilityContent() {
   const searchParams = useSearchParams()
   const patientId = searchParams.get('id')
   const [explanation, setExplanation] = useState<any>(null)
@@ -126,5 +126,13 @@ export default function ExplainabilityPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ExplainabilityPage() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-on-surface-variant">Loading explanation...</div>}>
+      <ExplainabilityContent />
+    </Suspense>
   )
 }
